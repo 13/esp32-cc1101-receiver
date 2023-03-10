@@ -1,8 +1,19 @@
 #include <Arduino.h>
 #include <ELECHOUSE_CC1101_SRC_DRV.h>
+#include <ArduinoJson.h>
+#include <PubSubClient.h>
+
 #include "credentials.h"
 
 // Edit credentials.h
+
+const char* mqtt_server = "your_mqtt_broker_ip_address";
+const char* mqtt_user = "your_mqtt_username";
+const char* mqtt_password = "your_mqtt_password";
+const char* mqtt_topic = "your_mqtt_topic";
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
 // cc1101
 const uint8_t byteArrSize = 61;
@@ -103,6 +114,22 @@ void setup()
     while (true)
       ;
   }
+  // Start WiFi
+  Serial.print(F("> [WiFi] Initializing... "));
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.println(F("OK"));
+  }
+  // Start MQTT
+  Serial.print(F("> [MQTT] Initializing... "));
+  mqttClient.setServer(mqtt_server, 1883);
+  mqttClient.setCallback(mqttCallback);
+  while (!mqttClient.connected()) {
+    if (mqttClient.connect("ESP32Client", mqtt_user, mqtt_password)) {
+      mqttClient.subscribe(mqtt_topic);
+    }
+    Serial.println(F("OK"));
+  }
 }
 
 void loop()
@@ -138,6 +165,13 @@ void loop()
       Serial.print(F("> [CC1101] Length: "));
       Serial.println(byteArrLen);
 #endif
+      StaticJsonDocument<200> doc;
+      doc["data"] = rx_buf;
+      String jsonString;
+      serializeJson(doc, jsonString);
+      Serial.println(jsonString);
+      mqttClient.publish(mqtt_topic, jsonString.c_str());
+      
       for (uint8_t i = 0; i < byteArrLen; i++)
       {
         // Filter [0-9A-Za-z,:]
@@ -180,4 +214,5 @@ void loop()
     }
 #endif
   }
+  mqttClient.loop();
 }
